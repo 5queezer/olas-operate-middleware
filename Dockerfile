@@ -10,6 +10,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Install tendermint v0.34.19 (required by open-autonomy for host deployment)
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "arm64" ]; then TM_ARCH="linux_arm64"; \
+    else TM_ARCH="linux_amd64"; fi && \
+    curl -sL "https://github.com/tendermint/tendermint/releases/download/v0.34.19/tendermint_0.34.19_${TM_ARCH}.tar.gz" \
+    | tar xz -C /usr/local/bin tendermint && \
+    chmod +x /usr/local/bin/tendermint
+
 WORKDIR /app
 COPY . .
 
