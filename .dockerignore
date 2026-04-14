@@ -1,0 +1,15 @@
+.git
+.tox
+.mypy_cache
+.pytest_cache
+__pycache__
+*.pyc
+*.egg-info
+dist
+build
+.venv
+tests
+docs
+*.md
+!README.md
+!pyproject.toml
