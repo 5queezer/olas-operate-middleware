@@ -1301,6 +1301,75 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
 
         return JSONResponse(content=existing)
 
+    @app.post("/api/v2/service/{service_config_id}/chat")
+    async def _chat_with_agent(request: Request) -> JSONResponse:
+        """Proxy a chat prompt to the running agent's configure_strategies endpoint."""
+        if operate.password is None:
+            return USER_NOT_LOGGED_IN_ERROR
+
+        service_config_id = request.path_params["service_config_id"]
+        if not operate.service_manager().exists(service_config_id=service_config_id):
+            return service_not_found_error(service_config_id=service_config_id)
+
+        service = operate.service_manager().load(
+            service_config_id=service_config_id
+        )
+
+        # Read agent's HTTP port from agent.json
+        agent_json_path = (
+            service.path / "deployment" / "agent.json"
+        )
+        if not agent_json_path.exists():
+            return JSONResponse(
+                content={"error": "Agent is not deployed."},
+                status_code=HTTPStatus.BAD_REQUEST,
+            )
+
+        try:
+            with open(agent_json_path, "r", encoding="utf-8") as f:
+                agent_config = json.load(f)
+            port = agent_config.get(
+                "CONNECTION_HTTP_SERVER_CONFIG_PORT", 8716
+            )
+        except (json.JSONDecodeError, OSError):
+            port = 8716
+
+        data = await request.json()
+        prompt = data.get("prompt", "")
+        if not prompt:
+            return JSONResponse(
+                content={"error": "Prompt is required."},
+                status_code=HTTPStatus.BAD_REQUEST,
+            )
+
+        import requests as http_requests  # noqa: E501
+
+        try:
+            resp = http_requests.post(
+                f"http://localhost:{port}/configure_strategies",
+                json={"prompt": prompt},
+                timeout=120,
+            )
+            return JSONResponse(
+                content=resp.json(),
+                status_code=resp.status_code,
+            )
+        except http_requests.exceptions.ConnectionError:
+            return JSONResponse(
+                content={"error": "Agent is not reachable. It may still be starting up."},
+                status_code=HTTPStatus.SERVICE_UNAVAILABLE,
+            )
+        except http_requests.exceptions.Timeout:
+            return JSONResponse(
+                content={"error": "Agent took too long to respond."},
+                status_code=HTTPStatus.GATEWAY_TIMEOUT,
+            )
+        except Exception as e:  # pylint: disable=broad-except
+            return JSONResponse(
+                content={"error": f"Failed to reach agent: {e}"},
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
     @app.get("/api/v2/service/{service_config_id}/funding_requirements")
     async def _get_funding_requirements(request: Request) -> JSONResponse:
         """Get the service refill requirements."""
