@@ -1228,6 +1228,78 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
             .get_agent_performance()
         )
 
+    @app.get("/api/v2/service/{service_config_id}/chatui_params")
+    async def _get_chatui_params(request: Request) -> JSONResponse:
+        """Get the chatui parameter store for a service."""
+        service_config_id = request.path_params["service_config_id"]
+        if not operate.service_manager().exists(service_config_id=service_config_id):
+            return service_not_found_error(service_config_id=service_config_id)
+
+        service = operate.service_manager().load(
+            service_config_id=service_config_id
+        )
+        store_path = Path(
+            service.env_variables.get(
+                "STORE_PATH", {"value": "."}
+            ).get("value", ".")
+        ) / "chatui_param_store.json"
+
+        if not store_path.exists():
+            return JSONResponse(content={})
+
+        try:
+            with open(store_path, "r", encoding="utf-8") as f:
+                return JSONResponse(content=json.load(f))
+        except (json.JSONDecodeError, OSError) as e:
+            return JSONResponse(
+                content={"error": f"Cannot read chatui_param_store.json: {e}"},
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
+    @app.patch("/api/v2/service/{service_config_id}/chatui_params")
+    async def _update_chatui_params(request: Request) -> JSONResponse:
+        """Update the chatui parameter store for a service."""
+        if operate.password is None:
+            return USER_NOT_LOGGED_IN_ERROR
+
+        service_config_id = request.path_params["service_config_id"]
+        if not operate.service_manager().exists(service_config_id=service_config_id):
+            return service_not_found_error(service_config_id=service_config_id)
+
+        service = operate.service_manager().load(
+            service_config_id=service_config_id
+        )
+        store_path = Path(
+            service.env_variables.get(
+                "STORE_PATH", {"value": "."}
+            ).get("value", ".")
+        ) / "chatui_param_store.json"
+
+        # Load existing params
+        existing: dict = {}
+        if store_path.exists():
+            try:
+                with open(store_path, "r", encoding="utf-8") as f:
+                    existing = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        # Merge updates
+        updates = await request.json()
+        existing.update(updates)
+
+        try:
+            store_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(store_path, "w", encoding="utf-8") as f:
+                json.dump(existing, f, indent=4)
+        except OSError as e:
+            return JSONResponse(
+                content={"error": f"Cannot write chatui_param_store.json: {e}"},
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            )
+
+        return JSONResponse(content=existing)
+
     @app.get("/api/v2/service/{service_config_id}/funding_requirements")
     async def _get_funding_requirements(request: Request) -> JSONResponse:
         """Get the service refill requirements."""
