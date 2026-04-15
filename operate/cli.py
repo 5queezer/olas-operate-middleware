@@ -24,6 +24,7 @@ import atexit
 import enum
 import json
 import multiprocessing
+import threading
 import os
 import shutil
 import signal
@@ -1301,6 +1302,49 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
 
         return JSONResponse(content=existing)
 
+    # Pending chat prompts: {service_config_id: {"prompt": str, "status": str, "result": dict|None}}
+    _pending_chat: t.Dict[str, t.Dict[str, t.Any]] = {}
+
+    def _send_chat_to_agent(service_path: Path, port: int, prompt: str) -> t.Dict:
+        """Send a chat prompt to the agent. Returns the response dict."""
+        import requests as http_requests
+
+        resp = http_requests.post(
+            f"http://localhost:{port}/configure_strategies",
+            json={"prompt": prompt},
+            timeout=120,
+        )
+        return resp.json()
+
+    def _retry_pending_chat(service_config_id: str, service_path: Path, port: int, prompt: str) -> None:
+        """Background thread that retries sending a chat prompt until the agent accepts it."""
+        import time as _time
+        import requests as http_requests
+
+        for attempt in range(40):  # retry for ~20 minutes
+            _time.sleep(30)
+            entry = _pending_chat.get(service_config_id)
+            if entry is None or entry.get("status") == "cancelled":
+                return
+            try:
+                resp = http_requests.post(
+                    f"http://localhost:{port}/configure_strategies",
+                    json={"prompt": prompt},
+                    timeout=120,
+                )
+                result = resp.json()
+                if "error" in result and "not started" in str(result["error"]).lower():
+                    logger.info(f"Chat retry {attempt+1}/40 for {service_config_id}: agent not ready yet")
+                    continue
+                _pending_chat[service_config_id] = {"prompt": prompt, "status": "delivered", "result": result}
+                logger.info(f"Chat prompt delivered to {service_config_id} on attempt {attempt+1}")
+                return
+            except Exception as e:  # pylint: disable=broad-except
+                logger.warning(f"Chat retry {attempt+1}/40 for {service_config_id}: {e}")
+                continue
+
+        _pending_chat[service_config_id] = {"prompt": prompt, "status": "failed", "result": {"error": "Agent did not become ready within 20 minutes."}}
+
     @app.post("/api/v2/service/{service_config_id}/chat")
     async def _chat_with_agent(request: Request) -> JSONResponse:
         """Proxy a chat prompt to the running agent's configure_strategies endpoint."""
@@ -1315,10 +1359,7 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
             service_config_id=service_config_id
         )
 
-        # Read agent's HTTP port from agent.json
-        agent_json_path = (
-            service.path / "deployment" / "agent.json"
-        )
+        agent_json_path = service.path / "deployment" / "agent.json"
         if not agent_json_path.exists():
             return JSONResponse(
                 content={"error": "Agent is not deployed."},
@@ -1328,9 +1369,7 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
         try:
             with open(agent_json_path, "r", encoding="utf-8") as f:
                 agent_config = json.load(f)
-            port = agent_config.get(
-                "CONNECTION_HTTP_SERVER_CONFIG_PORT", 8716
-            )
+            port = agent_config.get("CONNECTION_HTTP_SERVER_CONFIG_PORT", 8716)
         except (json.JSONDecodeError, OSError):
             port = 8716
 
@@ -1342,22 +1381,36 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
                 status_code=HTTPStatus.BAD_REQUEST,
             )
 
-        import requests as http_requests  # noqa: E501
+        import requests as http_requests
 
         try:
-            resp = http_requests.post(
-                f"http://localhost:{port}/configure_strategies",
-                json={"prompt": prompt},
-                timeout=120,
-            )
-            return JSONResponse(
-                content=resp.json(),
-                status_code=resp.status_code,
-            )
+            result = _send_chat_to_agent(service.path, port, prompt)
+
+            # If agent not ready, queue and retry in background
+            if "error" in result and "not started" in str(result["error"]).lower():
+                _pending_chat[service_config_id] = {"prompt": prompt, "status": "queued", "result": None}
+                thread = threading.Thread(
+                    target=_retry_pending_chat,
+                    args=(service_config_id, service.path, port, prompt),
+                    daemon=True,
+                )
+                thread.start()
+                return JSONResponse(
+                    content={"status": "queued", "message": "Agent is still starting up. Your instruction has been queued and will be delivered automatically."},
+                )
+
+            return JSONResponse(content=result)
         except http_requests.exceptions.ConnectionError:
+            # Agent not reachable — also queue
+            _pending_chat[service_config_id] = {"prompt": prompt, "status": "queued", "result": None}
+            thread = threading.Thread(
+                target=_retry_pending_chat,
+                args=(service_config_id, service.path, port, prompt),
+                daemon=True,
+            )
+            thread.start()
             return JSONResponse(
-                content={"error": "Agent is not reachable. It may still be starting up."},
-                status_code=HTTPStatus.SERVICE_UNAVAILABLE,
+                content={"status": "queued", "message": "Agent is not reachable yet. Your instruction has been queued and will be delivered when the agent starts."},
             )
         except http_requests.exceptions.Timeout:
             return JSONResponse(
@@ -1369,6 +1422,15 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
                 content={"error": f"Failed to reach agent: {e}"},
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             )
+
+    @app.get("/api/v2/service/{service_config_id}/chat/status")
+    async def _chat_status(request: Request) -> JSONResponse:
+        """Check the status of a queued chat prompt."""
+        service_config_id = request.path_params["service_config_id"]
+        entry = _pending_chat.get(service_config_id)
+        if entry is None:
+            return JSONResponse(content={"status": "none"})
+        return JSONResponse(content=entry)
 
     @app.get("/api/v2/service/{service_config_id}/funding_requirements")
     async def _get_funding_requirements(request: Request) -> JSONResponse:
