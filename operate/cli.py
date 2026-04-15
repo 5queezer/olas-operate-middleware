@@ -564,7 +564,10 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
     @app.get("/api/account")
     async def _get_account(request: Request) -> t.Dict:
         """Get account information."""
-        return {"is_setup": operate.user_account is not None}
+        return {
+            "is_setup": operate.user_account is not None,
+            "is_logged_in": operate.password is not None,
+        }
 
     @app.post("/api/account")
     async def _setup_account(request: Request) -> t.Dict:
