@@ -10,6 +10,6 @@ jobs:
     steps:
       - name: Trigger Coolify deployment
         run: |
-          curl -s -X POST \
+          curl -fsS -X GET \
             -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}" \
-            "${{ secrets.COOLIFY_URL }}/api/v1/applications/${{ secrets.COOLIFY_APP_UUID }}/restart"
+            "${{ secrets.COOLIFY_URL }}/api/v1/deploy?uuid=${{ secrets.COOLIFY_APP_UUID }}&force=false"
