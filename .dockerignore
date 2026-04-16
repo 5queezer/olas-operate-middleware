@@ -1,4 +1,5 @@
 .git
+.claude
 .tox
 .mypy_cache
 .pytest_cache
