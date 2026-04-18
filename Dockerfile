@@ -30,6 +30,11 @@ ENV OPERATE_DATA=/app/.operate
 ENV DISABLE_PARENT_WATCHDOG=1
 VOLUME /app/.operate
 
+# Route IPFS reads/writes through our self-hosted kubo node on the same docker network,
+# rather than Autonolas's registry (which doesn't have our custom trader fork content).
+# Overridable in Coolify env if the operator runs a different IPFS endpoint.
+ENV OPEN_AEA_IPFS_ADDR=/dns/trader-ipfs/tcp/5001/http
+
 EXPOSE 8000
 
 # Bind to 0.0.0.0 so traffic can reach the container
