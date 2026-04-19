@@ -24,10 +24,10 @@ import atexit
 import enum
 import json
 import multiprocessing
-import threading
 import os
 import shutil
 import signal
+import threading
 import traceback
 import typing as t
 import uuid
@@ -1240,14 +1240,15 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
         if not operate.service_manager().exists(service_config_id=service_config_id):
             return service_not_found_error(service_config_id=service_config_id)
 
-        service = operate.service_manager().load(
-            service_config_id=service_config_id
+        service = operate.service_manager().load(service_config_id=service_config_id)
+        store_path = (
+            Path(
+                service.env_variables.get("STORE_PATH", {"value": "."}).get(
+                    "value", "."
+                )
+            )
+            / "chatui_param_store.json"
         )
-        store_path = Path(
-            service.env_variables.get(
-                "STORE_PATH", {"value": "."}
-            ).get("value", ".")
-        ) / "chatui_param_store.json"
 
         if not store_path.exists():
             return JSONResponse(content={})
@@ -1271,14 +1272,15 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
         if not operate.service_manager().exists(service_config_id=service_config_id):
             return service_not_found_error(service_config_id=service_config_id)
 
-        service = operate.service_manager().load(
-            service_config_id=service_config_id
+        service = operate.service_manager().load(service_config_id=service_config_id)
+        store_path = (
+            Path(
+                service.env_variables.get("STORE_PATH", {"value": "."}).get(
+                    "value", "."
+                )
+            )
+            / "chatui_param_store.json"
         )
-        store_path = Path(
-            service.env_variables.get(
-                "STORE_PATH", {"value": "."}
-            ).get("value", ".")
-        ) / "chatui_param_store.json"
 
         # Load existing params
         existing: dict = {}
@@ -1319,9 +1321,12 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
         )
         return resp.json()
 
-    def _retry_pending_chat(service_config_id: str, service_path: Path, port: int, prompt: str) -> None:
+    def _retry_pending_chat(
+        service_config_id: str, service_path: Path, port: int, prompt: str
+    ) -> None:
         """Background thread that retries sending a chat prompt until the agent accepts it."""
         import time as _time
+
         import requests as http_requests
 
         for attempt in range(40):  # retry for ~20 minutes
@@ -1337,16 +1342,30 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
                 )
                 result = resp.json()
                 if "error" in result and "not started" in str(result["error"]).lower():
-                    logger.info(f"Chat retry {attempt+1}/40 for {service_config_id}: agent not ready yet")
+                    logger.info(
+                        f"Chat retry {attempt+1}/40 for {service_config_id}: agent not ready yet"
+                    )
                     continue
-                _pending_chat[service_config_id] = {"prompt": prompt, "status": "delivered", "result": result}
-                logger.info(f"Chat prompt delivered to {service_config_id} on attempt {attempt+1}")
+                _pending_chat[service_config_id] = {
+                    "prompt": prompt,
+                    "status": "delivered",
+                    "result": result,
+                }
+                logger.info(
+                    f"Chat prompt delivered to {service_config_id} on attempt {attempt+1}"
+                )
                 return
             except Exception as e:  # pylint: disable=broad-except
-                logger.warning(f"Chat retry {attempt+1}/40 for {service_config_id}: {e}")
+                logger.warning(
+                    f"Chat retry {attempt+1}/40 for {service_config_id}: {e}"
+                )
                 continue
 
-        _pending_chat[service_config_id] = {"prompt": prompt, "status": "failed", "result": {"error": "Agent did not become ready within 20 minutes."}}
+        _pending_chat[service_config_id] = {
+            "prompt": prompt,
+            "status": "failed",
+            "result": {"error": "Agent did not become ready within 20 minutes."},
+        }
 
     @app.post("/api/v2/service/{service_config_id}/chat")
     async def _chat_with_agent(request: Request) -> JSONResponse:
@@ -1358,9 +1377,7 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
         if not operate.service_manager().exists(service_config_id=service_config_id):
             return service_not_found_error(service_config_id=service_config_id)
 
-        service = operate.service_manager().load(
-            service_config_id=service_config_id
-        )
+        service = operate.service_manager().load(service_config_id=service_config_id)
 
         agent_json_path = service.path / "deployment" / "agent.json"
         if not agent_json_path.exists():
@@ -1391,7 +1408,11 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
 
             # If agent not ready, queue and retry in background
             if "error" in result and "not started" in str(result["error"]).lower():
-                _pending_chat[service_config_id] = {"prompt": prompt, "status": "queued", "result": None}
+                _pending_chat[service_config_id] = {
+                    "prompt": prompt,
+                    "status": "queued",
+                    "result": None,
+                }
                 thread = threading.Thread(
                     target=_retry_pending_chat,
                     args=(service_config_id, service.path, port, prompt),
@@ -1399,13 +1420,20 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
                 )
                 thread.start()
                 return JSONResponse(
-                    content={"status": "queued", "message": "Agent is still starting up. Your instruction has been queued and will be delivered automatically."},
+                    content={
+                        "status": "queued",
+                        "message": "Agent is still starting up. Your instruction has been queued and will be delivered automatically.",
+                    },
                 )
 
             return JSONResponse(content=result)
         except http_requests.exceptions.ConnectionError:
             # Agent not reachable — also queue
-            _pending_chat[service_config_id] = {"prompt": prompt, "status": "queued", "result": None}
+            _pending_chat[service_config_id] = {
+                "prompt": prompt,
+                "status": "queued",
+                "result": None,
+            }
             thread = threading.Thread(
                 target=_retry_pending_chat,
                 args=(service_config_id, service.path, port, prompt),
@@ -1413,7 +1441,10 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
             )
             thread.start()
             return JSONResponse(
-                content={"status": "queued", "message": "Agent is not reachable yet. Your instruction has been queued and will be delivered when the agent starts."},
+                content={
+                    "status": "queued",
+                    "message": "Agent is not reachable yet. Your instruction has been queued and will be delivered when the agent starts.",
+                },
             )
         except http_requests.exceptions.Timeout:
             return JSONResponse(
