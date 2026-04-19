@@ -1343,7 +1343,7 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
                 result = resp.json()
                 if "error" in result and "not started" in str(result["error"]).lower():
                     logger.info(
-                        f"Chat retry {attempt+1}/40 for {service_config_id}: agent not ready yet"
+                        f"Chat retry {attempt + 1}/40 for {service_config_id}: agent not ready yet"
                     )
                     continue
                 _pending_chat[service_config_id] = {
@@ -1352,12 +1352,12 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
                     "result": result,
                 }
                 logger.info(
-                    f"Chat prompt delivered to {service_config_id} on attempt {attempt+1}"
+                    f"Chat prompt delivered to {service_config_id} on attempt {attempt + 1}"
                 )
                 return
             except Exception as e:  # pylint: disable=broad-except
                 logger.warning(
-                    f"Chat retry {attempt+1}/40 for {service_config_id}: {e}"
+                    f"Chat retry {attempt + 1}/40 for {service_config_id}: {e}"
                 )
                 continue
 
