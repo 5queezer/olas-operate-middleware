@@ -28,6 +28,7 @@ import os
 import shutil
 import signal
 import threading
+import time as _time
 import traceback
 import typing as t
 import uuid
@@ -39,6 +40,7 @@ from time import time
 from types import FrameType
 
 import autonomy.chain.tx
+import requests as http_requests
 from aea.helpers.logging import setup_logger
 from clea import group, params, run
 from fastapi import FastAPI, Query, Request
@@ -1312,8 +1314,6 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
 
     def _send_chat_to_agent(service_path: Path, port: int, prompt: str) -> t.Dict:
         """Send a chat prompt to the agent. Returns the response dict."""
-        import requests as http_requests
-
         resp = http_requests.post(
             f"http://localhost:{port}/configure_strategies",
             json={"prompt": prompt},
@@ -1325,10 +1325,6 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
         service_config_id: str, service_path: Path, port: int, prompt: str
     ) -> None:
         """Background thread that retries sending a chat prompt until the agent accepts it."""
-        import time as _time
-
-        import requests as http_requests
-
         for attempt in range(40):  # retry for ~20 minutes
             _time.sleep(30)
             entry = _pending_chat.get(service_config_id)
@@ -1368,7 +1364,9 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
         }
 
     @app.post("/api/v2/service/{service_config_id}/chat")
-    async def _chat_with_agent(request: Request) -> JSONResponse:
+    async def _chat_with_agent(  # pylint: disable=too-many-return-statements
+        request: Request,
+    ) -> JSONResponse:
         """Proxy a chat prompt to the running agent's configure_strategies endpoint."""
         if operate.password is None:
             return USER_NOT_LOGGED_IN_ERROR
@@ -1400,8 +1398,6 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
                 content={"error": "Prompt is required."},
                 status_code=HTTPStatus.BAD_REQUEST,
             )
-
-        import requests as http_requests
 
         try:
             result = _send_chat_to_agent(service.path, port, prompt)
