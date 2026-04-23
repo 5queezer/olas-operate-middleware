@@ -111,6 +111,7 @@ from operate.settings import Settings
 from operate.utils import subtract_dicts
 from operate.utils.gnosis import gas_fees_spent_in_tx, get_assets_balances
 from operate.utils.single_instance import AppSingleInstance, ParentWatchdog
+from operate.version_check import UpstreamVersionCache
 from operate.wallet.master import InsufficientFundsException, MasterWalletManager
 from operate.wallet.wallet_recovery_manager import (
     WalletRecoveryError,
@@ -1141,6 +1142,14 @@ def create_app(  # pylint: disable=too-many-locals, unused-argument, too-many-st
                 "transfer_txs": transfer_txs,
             }
         )
+
+    _upstream_version_cache = UpstreamVersionCache()
+
+    @app.get("/api/v2/version")
+    async def _get_version(request: Request) -> JSONResponse:
+        """Report installed middleware version vs. latest upstream release."""
+        snapshot = await run_in_executor(_upstream_version_cache.get)
+        return JSONResponse(content=snapshot)
 
     @app.get("/api/v2/services")
     async def _get_services(request: Request) -> JSONResponse:
