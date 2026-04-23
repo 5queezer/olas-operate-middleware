@@ -20,6 +20,7 @@
 """Unit tests for operate/cli.py — covering all lines missed by existing tests."""
 
 import asyncio
+import json
 import logging
 import multiprocessing
 import os
@@ -41,6 +42,7 @@ from operate.cli import (
     service_not_found_error,
 )
 from operate.constants import OPERATE, SERVICES_DIR
+from operate.migration import MigrationManager
 from operate.operate_types import Chain, DeploymentStatus
 from operate.services.funding_manager import FundingInProgressError
 from operate.wallet.master import InsufficientFundsException
@@ -188,8 +190,9 @@ class TestOperateAppMissingCoverage:
             dst.mkdir(parents=True, exist_ok=True)
             (dst / SERVICES_DIR).mkdir(exist_ok=True)
 
-        with patch("operate.cli.shutil.copytree", side_effect=_fake_copytree), patch(
-            "operate.cli.shutil.rmtree"
+        with (
+            patch("operate.cli.shutil.copytree", side_effect=_fake_copytree),
+            patch("operate.cli.shutil.rmtree"),
         ):
             obj._backup_operate_if_new_version()
         # No assertion needed — reaching here without error proves the branch ran.
@@ -203,8 +206,9 @@ class TestOperateAppMissingCoverage:
         obj._keys_manager = MagicMock()
         obj._funding_manager = MagicMock()
         obj._migration_manager = MagicMock()
-        with patch("operate.cli.WalletRecoveryManager") as mock_cls, patch(
-            "operate.cli.services"
+        with (
+            patch("operate.cli.WalletRecoveryManager") as mock_cls,
+            patch("operate.cli.services"),
         ):
             mock_cls.return_value = MagicMock()
             obj.service_manager = MagicMock(return_value=MagicMock())
@@ -326,7 +330,8 @@ class TestCreateAppInfra:
             with TestClient(app, raise_server_exceptions=False) as client:
                 m.password = None  # not logged in before login
                 resp = client.post(
-                    "/api/account/login", json={"password": "testpass123"}  # nosec
+                    "/api/account/login",
+                    json={"password": "testpass123"},  # nosec
                 )
             # schedule_funding_job is called on successful login
             assert resp.status_code in (HTTPStatus.OK, HTTPStatus.UNAUTHORIZED)
@@ -439,14 +444,13 @@ class TestCreateAppInfra:
         def _capture_signal(signum: Any, handler: Any) -> None:
             registered_handlers[signum] = handler
 
-        with patch("operate.cli.signal") as mock_sig, patch(
-            "operate.cli.HealthChecker"
-        ) as mock_hc, patch("operate.cli.OperateApp", return_value=m), patch(
-            "operate.cli.atexit"
-        ), patch(
-            "operate.cli.ParentWatchdog"
-        ), patch.dict(
-            os.environ, {"HEALTH_CHECKER_OFF": "0"}
+        with (
+            patch("operate.cli.signal") as mock_sig,
+            patch("operate.cli.HealthChecker") as mock_hc,
+            patch("operate.cli.OperateApp", return_value=m),
+            patch("operate.cli.atexit"),
+            patch("operate.cli.ParentWatchdog"),
+            patch.dict(os.environ, {"HEALTH_CHECKER_OFF": "0"}),
         ):
             mock_hc.NUMBER_OF_FAILS_DEFAULT = 60
             mock_sig.SIGINT = signal_module.SIGINT
@@ -582,7 +586,8 @@ class TestAccountRoutes:
         with stack:
             with TestClient(app, raise_server_exceptions=False) as client:
                 resp = client.post(
-                    "/api/account", json={"password": "testpass123"}  # nosec
+                    "/api/account",
+                    json={"password": "testpass123"},  # nosec
                 )
             assert resp.status_code == HTTPStatus.CONFLICT
 
@@ -648,7 +653,8 @@ class TestAccountRoutes:
         with stack:
             with TestClient(app, raise_server_exceptions=False) as client:
                 resp = client.post(
-                    "/api/account/login", json={"password": "testpass123"}  # nosec
+                    "/api/account/login",
+                    json={"password": "testpass123"},  # nosec
                 )
             assert resp.status_code == HTTPStatus.OK
 
@@ -662,7 +668,8 @@ class TestAccountRoutes:
         with stack:
             with TestClient(app, raise_server_exceptions=False) as client:
                 resp = client.post(
-                    "/api/account/login", json={"password": "wrongpass"}  # nosec
+                    "/api/account/login",
+                    json={"password": "wrongpass"},  # nosec
                 )
             assert resp.status_code == HTTPStatus.UNAUTHORIZED
 
@@ -674,7 +681,8 @@ class TestAccountRoutes:
         with stack:
             with TestClient(app, raise_server_exceptions=False) as client:
                 resp = client.post(
-                    "/api/account/login", json={"password": "testpass123"}  # nosec
+                    "/api/account/login",
+                    json={"password": "testpass123"},  # nosec
                 )
             assert resp.status_code == HTTPStatus.NOT_FOUND
 
@@ -1049,9 +1057,10 @@ class TestCreateSafeRoute:
 
         m.wallet_manager.load.side_effect = _mock_load
 
-        with patch("operate.cli.get_assets_balances") as mock_balances, patch(
-            "operate.cli.subtract_dicts"
-        ) as mock_subtract:
+        with (
+            patch("operate.cli.get_assets_balances") as mock_balances,
+            patch("operate.cli.subtract_dicts") as mock_subtract,
+        ):
             mock_balances.return_value = {"0xsafe": {"0x0": 0}}
             mock_subtract.return_value = {"0x0": 1000}
 
@@ -1074,9 +1083,10 @@ class TestCreateSafeRoute:
         wallet_mock.address = "0xeoa"
         m.wallet_manager.load.return_value = wallet_mock
 
-        with patch("operate.cli.get_assets_balances") as mock_balances, patch(
-            "operate.cli.subtract_dicts"
-        ) as mock_subtract:
+        with (
+            patch("operate.cli.get_assets_balances") as mock_balances,
+            patch("operate.cli.subtract_dicts") as mock_subtract,
+        ):
             # All amounts are 0 → no transfers needed
             mock_balances.return_value = {"0xsafe": {"0x0": 0}}
             mock_subtract.return_value = {}  # empty → no transfers
@@ -1104,9 +1114,10 @@ class TestCreateSafeRoute:
         wallet_mock.transfer.return_value = "0xtransfer_tx"
         m.wallet_manager.load.return_value = wallet_mock
 
-        with patch("operate.cli.get_assets_balances") as mock_balances, patch(
-            "operate.cli.subtract_dicts"
-        ) as mock_subtract:
+        with (
+            patch("operate.cli.get_assets_balances") as mock_balances,
+            patch("operate.cli.subtract_dicts") as mock_subtract,
+        ):
             mock_balances.return_value = {"0xsafe": {"0x0": 0}}
             mock_subtract.return_value = {"0x0": 500}  # positive → transfer
 
@@ -1148,9 +1159,10 @@ class TestCreateSafeRoute:
 
         m.wallet_manager.load.side_effect = _mock_load
 
-        with patch("operate.cli.get_assets_balances") as mock_balances, patch(
-            "operate.cli.subtract_dicts"
-        ) as mock_subtract:
+        with (
+            patch("operate.cli.get_assets_balances") as mock_balances,
+            patch("operate.cli.subtract_dicts") as mock_subtract,
+        ):
             mock_balances.return_value = {"0xsafe": {"0x0": 0}}
             mock_subtract.return_value = {"0x0": 1000}
 
@@ -1178,9 +1190,10 @@ class TestCreateSafeRoute:
         wallet_mock.transfer.return_value = "0xtx"
         m.wallet_manager.load.return_value = wallet_mock
 
-        with patch("operate.cli.get_assets_balances") as mock_balances, patch(
-            "operate.cli.subtract_dicts"
-        ) as mock_subtract:
+        with (
+            patch("operate.cli.get_assets_balances") as mock_balances,
+            patch("operate.cli.subtract_dicts") as mock_subtract,
+        ):
             mock_balances.return_value = {"0xeoa": {"0x0": 0}}
             mock_subtract.return_value = {}
 
@@ -1208,9 +1221,10 @@ class TestCreateSafeRoute:
         wallet_mock.transfer.side_effect = ["0xtx_ok", RuntimeError("fail")]
         m.wallet_manager.load.return_value = wallet_mock
 
-        with patch("operate.cli.get_assets_balances") as mock_balances, patch(
-            "operate.cli.subtract_dicts"
-        ) as mock_subtract:
+        with (
+            patch("operate.cli.get_assets_balances") as mock_balances,
+            patch("operate.cli.subtract_dicts") as mock_subtract,
+        ):
             mock_balances.return_value = {"0xsafe": {"0x0": 0}}
             # Two assets: both positive so both transfers are attempted
             mock_subtract.return_value = {"0xtoken": 50, "0x0": 100}
@@ -2407,10 +2421,11 @@ class TestCliCommands:
         fn = self._get_callback("_daemon")
         assert fn is not None
 
-        with patch("operate.cli.create_app") as mock_create_app, patch(
-            "operate.cli.Server"
-        ) as mock_server_cls, patch("operate.cli.Config") as mock_config_cls, patch(
-            "operate.cli.AppSingleInstance"
+        with (
+            patch("operate.cli.create_app") as mock_create_app,
+            patch("operate.cli.Server") as mock_server_cls,
+            patch("operate.cli.Config") as mock_config_cls,
+            patch("operate.cli.AppSingleInstance"),
         ):
             mock_app = MagicMock()
             mock_create_app.return_value = mock_app
@@ -2433,10 +2448,11 @@ class TestCliCommands:
         fn = self._get_callback("_daemon")
         assert fn is not None
 
-        with patch("operate.cli.create_app") as mock_create_app, patch(
-            "operate.cli.Server"
-        ) as mock_server_cls, patch("operate.cli.Config") as mock_config_cls, patch(
-            "operate.cli.AppSingleInstance"
+        with (
+            patch("operate.cli.create_app") as mock_create_app,
+            patch("operate.cli.Server") as mock_server_cls,
+            patch("operate.cli.Config") as mock_config_cls,
+            patch("operate.cli.AppSingleInstance"),
         ):
             mock_app = MagicMock()
             mock_create_app.return_value = mock_app
@@ -2459,9 +2475,10 @@ class TestCliCommands:
         fn = self._get_callback("qs_start")
         assert fn is not None
 
-        with patch("operate.cli.OperateApp") as mock_app_cls, patch(
-            "operate.cli.run_service"
-        ) as mock_run:
+        with (
+            patch("operate.cli.OperateApp") as mock_app_cls,
+            patch("operate.cli.run_service") as mock_run,
+        ):
             mock_app = MagicMock()
             mock_app_cls.return_value = mock_app
 
@@ -2480,9 +2497,10 @@ class TestCliCommands:
         fn = self._get_callback("qs_stop")
         assert fn is not None
 
-        with patch("operate.cli.OperateApp") as mock_app_cls, patch(
-            "operate.cli.stop_service"
-        ) as mock_stop:
+        with (
+            patch("operate.cli.OperateApp") as mock_app_cls,
+            patch("operate.cli.stop_service") as mock_stop,
+        ):
             mock_app_cls.return_value = MagicMock()
             fn(
                 config="/path/to/config.yaml",
@@ -2497,9 +2515,10 @@ class TestCliCommands:
         fn = self._get_callback("qs_terminate")
         assert fn is not None
 
-        with patch("operate.cli.OperateApp") as mock_app_cls, patch(
-            "operate.cli.terminate_service"
-        ) as mock_term:
+        with (
+            patch("operate.cli.OperateApp") as mock_app_cls,
+            patch("operate.cli.terminate_service") as mock_term,
+        ):
             mock_app_cls.return_value = MagicMock()
             fn(config="/path/to/config.yaml", attended="true")
 
@@ -2510,9 +2529,10 @@ class TestCliCommands:
         fn = self._get_callback("qs_claim")
         assert fn is not None
 
-        with patch("operate.cli.OperateApp") as mock_app_cls, patch(
-            "operate.cli.claim_staking_rewards"
-        ) as mock_claim:
+        with (
+            patch("operate.cli.OperateApp") as mock_app_cls,
+            patch("operate.cli.claim_staking_rewards") as mock_claim,
+        ):
             mock_app_cls.return_value = MagicMock()
             fn(config="/path/to/config.yaml", attended="true")
 
@@ -2523,9 +2543,10 @@ class TestCliCommands:
         fn = self._get_callback("qs_reset_configs")
         assert fn is not None
 
-        with patch("operate.cli.OperateApp") as mock_app_cls, patch(
-            "operate.cli.reset_configs"
-        ) as mock_reset:
+        with (
+            patch("operate.cli.OperateApp") as mock_app_cls,
+            patch("operate.cli.reset_configs") as mock_reset,
+        ):
             mock_app_cls.return_value = MagicMock()
             fn(config="/path/to/config.yaml", attended="true")
 
@@ -2536,9 +2557,10 @@ class TestCliCommands:
         fn = self._get_callback("qs_reset_staking")
         assert fn is not None
 
-        with patch("operate.cli.OperateApp") as mock_app_cls, patch(
-            "operate.cli.reset_staking"
-        ) as mock_reset:
+        with (
+            patch("operate.cli.OperateApp") as mock_app_cls,
+            patch("operate.cli.reset_staking") as mock_reset,
+        ):
             mock_app_cls.return_value = MagicMock()
             fn(config="/path/to/config.yaml", attended="true")
 
@@ -2549,9 +2571,10 @@ class TestCliCommands:
         fn = self._get_callback("qs_reset_password")
         assert fn is not None
 
-        with patch("operate.cli.OperateApp") as mock_app_cls, patch(
-            "operate.cli.reset_password"
-        ) as mock_reset:
+        with (
+            patch("operate.cli.OperateApp") as mock_app_cls,
+            patch("operate.cli.reset_password") as mock_reset,
+        ):
             mock_app_cls.return_value = MagicMock()
             fn(attended="true")
 
@@ -2562,9 +2585,10 @@ class TestCliCommands:
         fn = self._get_callback("qs_analyse_logs")
         assert fn is not None
 
-        with patch("operate.cli.OperateApp") as mock_app_cls, patch(
-            "operate.cli.analyse_logs"
-        ) as mock_analyse:
+        with (
+            patch("operate.cli.OperateApp") as mock_app_cls,
+            patch("operate.cli.analyse_logs") as mock_analyse,
+        ):
             mock_app_cls.return_value = MagicMock()
             fn(
                 config="/path/to/config.yaml",
@@ -2586,12 +2610,13 @@ class TestCliCommands:
 
 
 class TestMain:
-    """Cover main() (lines 2013-2015)."""
+    """Cover main() behavior."""
 
     def test_main_with_freeze_support(self) -> None:
-        """Cover lines 2013-2015: main() calls freeze_support and run."""
-        with patch("operate.cli.run") as mock_run, patch.dict(
-            multiprocessing.__dict__, {"freeze_support": MagicMock()}
+        """Cover main() calls freeze_support and run."""
+        with (
+            patch("operate.cli.run") as mock_run,
+            patch.dict(multiprocessing.__dict__, {"freeze_support": MagicMock()}),
         ):
             main()
         mock_run.assert_called_once()
@@ -2600,11 +2625,50 @@ class TestMain:
         """Cover main() when freeze_support is not in multiprocessing.__dict__."""
         mp_dict = {k: v for k, v in multiprocessing.__dict__.items()}
         mp_dict.pop("freeze_support", None)
-        with patch("operate.cli.run") as mock_run, patch.dict(
-            multiprocessing.__dict__, mp_dict, clear=True
+        with (
+            patch("operate.cli.run") as mock_run,
+            patch.dict(multiprocessing.__dict__, mp_dict, clear=True),
         ):
             main()
         mock_run.assert_called_once()
+
+    def test_main_strips_python_interpreter_flags(self) -> None:
+        """Remove Python interpreter flags before handing argv to the CLI."""
+        freeze_support = MagicMock()
+        initial_argv = ["pearl_x64", "-B", "daemon", "--home", "tmp-home"]
+        expected_argv = ["pearl_x64", "daemon", "--home", "tmp-home"]
+        with (
+            patch("operate.cli.run") as mock_run,
+            patch.dict(multiprocessing.__dict__, {"freeze_support": freeze_support}),
+            patch("sys.argv", list(initial_argv)),
+        ):
+            main()
+            assert __import__("sys").argv == expected_argv
+
+        freeze_support.assert_called_once_with()
+        mock_run.assert_called_once_with(cli=mock_run.call_args.kwargs["cli"])
+
+    def test_main_strips_flags_with_arguments(self) -> None:
+        """Remove flags that take arguments along with their argument values."""
+        from operate.cli import _strip_python_interpreter_flags
+
+        initial_argv = ["pearl", "-W", "ignore::DeprecationWarning", "daemon"]
+        expected_argv = ["pearl", "daemon"]
+        result = _strip_python_interpreter_flags(list(initial_argv))
+        assert result == expected_argv
+
+    def test_main_preserves_non_interpreter_arguments(self) -> None:
+        """Leave valid CLI arguments unchanged."""
+        expected_argv = ["pearl_x64", "daemon", "--port", "8001"]
+        with (
+            patch("operate.cli.run") as mock_run,
+            patch.dict(multiprocessing.__dict__, {"freeze_support": MagicMock()}),
+            patch("sys.argv", list(expected_argv)),
+        ):
+            main()
+            assert __import__("sys").argv == expected_argv
+
+        mock_run.assert_called_once_with(cli=mock_run.call_args.kwargs["cli"])
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2673,7 +2737,8 @@ class TestExtraCoverageLines:
         with stack:
             with TestClient(app, raise_server_exceptions=False) as c:
                 resp = c.post(
-                    "/api/account", json={"password": "validpass123"}  # nosec
+                    "/api/account",
+                    json={"password": "validpass123"},  # nosec
                 )
             assert resp.status_code == HTTPStatus.OK
 
@@ -2700,7 +2765,8 @@ class TestExtraCoverageLines:
         with stack:
             with TestClient(app, raise_server_exceptions=False) as c:
                 resp = c.put(
-                    "/api/account", json={"new_password": "newpass123"}  # nosec
+                    "/api/account",
+                    json={"new_password": "newpass123"},  # nosec
                 )
             assert resp.status_code == HTTPStatus.BAD_REQUEST
 
@@ -2837,9 +2903,10 @@ class TestExtraCoverageLines:
         wallet_mock.address = "0xeoa"
         m.wallet_manager.load.return_value = wallet_mock
 
-        with patch("operate.cli.get_assets_balances") as mock_balances, patch(
-            "operate.cli.subtract_dicts"
-        ) as mock_subtract:
+        with (
+            patch("operate.cli.get_assets_balances") as mock_balances,
+            patch("operate.cli.subtract_dicts") as mock_subtract,
+        ):
             mock_balances.return_value = {"0xsafe": {"0x0": 0}}
             # Return a zero amount so the `if amount <= 0: continue` branch runs
             mock_subtract.return_value = {"0x0": 0}
@@ -2866,3 +2933,241 @@ class TestExtraCoverageLines:
             with TestClient(app, raise_server_exceptions=False) as c:
                 resp = c.post("/api/v2/service/svc1/achievement/ach1/acknowledge")
             assert resp.status_code == HTTPStatus.NOT_FOUND
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Pearl Store API endpoints (/api/store)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class TestPearlStoreEndpoints:
+    """Tests for /api/store GET, POST, and DELETE endpoints."""
+
+    def _open_store_app(self, tmp_path: Path, *, migrate_store: bool = True) -> tuple:
+        """Open app with a real _path so pearl_store.json file I/O works."""
+        m = _make_mock_operate()
+        m._path = tmp_path
+        if migrate_store:
+            MigrationManager(home=tmp_path, logger=MagicMock()).migrate_pearl_store()
+        return _open_app(m)
+
+    def test_get_store_returns_empty_when_file_missing(self, tmp_path: Path) -> None:
+        """GET /api/store returns {"data": {}} when pearl_store.json does not exist."""
+        stack, app, _, _ = self._open_store_app(tmp_path)
+        with stack:
+            app._server = MagicMock()
+            with TestClient(app) as client:
+                resp = client.get("/api/store")
+        assert resp.status_code == HTTPStatus.OK
+        assert resp.json() == {"data": {}}
+
+    def test_get_store_returns_data_when_file_exists(self, tmp_path: Path) -> None:
+        """GET /api/store returns stored data when pearl_store.json exists."""
+        store_data = {"foo": "bar", "nested": {"key": True}}
+        (tmp_path / "pearl_store.json").write_text(
+            json.dumps({"version": 1, "data": store_data}), encoding="utf-8"
+        )
+        stack, app, _, _ = self._open_store_app(tmp_path)
+        with stack:
+            app._server = MagicMock()
+            with TestClient(app) as client:
+                resp = client.get("/api/store")
+        assert resp.status_code == HTTPStatus.OK
+        assert resp.json() == {"data": store_data}
+
+    def test_get_store_migrates_legacy_flat_file(self, tmp_path: Path) -> None:
+        """GET /api/store migrates a legacy flat file to wrapped versioned schema."""
+        legacy_store_data = {"foo": "bar", "path": {"inner": 123}}
+        store_path = tmp_path / "pearl_store.json"
+        store_path.write_text(json.dumps(legacy_store_data), encoding="utf-8")
+
+        stack, app, _, _ = self._open_store_app(tmp_path)
+        with stack:
+            app._server = MagicMock()
+            with TestClient(app) as client:
+                resp = client.get("/api/store")
+
+        assert resp.status_code == HTTPStatus.OK
+        assert resp.json() == {"data": legacy_store_data}
+        assert json.loads(store_path.read_text(encoding="utf-8")) == {
+            "version": 1,
+            "data": legacy_store_data,
+        }
+
+    def test_get_store_returns_500_when_file_invalid_json(self, tmp_path: Path) -> None:
+        """GET /api/store returns 500 when pearl_store.json has invalid JSON."""
+        (tmp_path / "pearl_store.json").write_text("not valid json", encoding="utf-8")
+        stack, app, _, _ = self._open_store_app(tmp_path, migrate_store=False)
+        with stack:
+            app._server = MagicMock()
+            with TestClient(app, raise_server_exceptions=False) as client:
+                resp = client.get("/api/store")
+        assert resp.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+
+    def test_post_store_missing_key_returns_400(self, tmp_path: Path) -> None:
+        """POST /api/store without 'key' field returns 400."""
+        stack, app, _, _ = self._open_store_app(tmp_path)
+        with stack:
+            app._server = MagicMock()
+            with TestClient(app) as client:
+                resp = client.post("/api/store", json={"value": "test"})
+        assert resp.status_code == HTTPStatus.BAD_REQUEST
+        assert "key" in resp.json()["error"].lower()
+
+    def test_post_store_empty_key_returns_400(self, tmp_path: Path) -> None:
+        """POST /api/store with empty 'key' string returns 400."""
+        stack, app, _, _ = self._open_store_app(tmp_path)
+        with stack:
+            app._server = MagicMock()
+            with TestClient(app) as client:
+                resp = client.post("/api/store", json={"key": "", "value": "test"})
+        assert resp.status_code == HTTPStatus.BAD_REQUEST
+
+    def test_post_store_simple_key_creates_entry(self, tmp_path: Path) -> None:
+        """POST /api/store with a simple key writes the value to pearl_store.json."""
+        stack, app, _, _ = self._open_store_app(tmp_path)
+        with stack:
+            app._server = MagicMock()
+            with TestClient(app) as client:
+                resp = client.post("/api/store", json={"key": "myKey", "value": True})
+        assert resp.status_code == HTTPStatus.OK
+        assert resp.json() == {"success": True}
+        store_path = tmp_path / "pearl_store.json"
+        assert store_path.exists()
+        assert json.loads(store_path.read_text(encoding="utf-8")) == {
+            "version": 1,
+            "data": {"myKey": True},
+        }
+
+    def test_post_store_dot_notation_key_creates_nested_structure(
+        self, tmp_path: Path
+    ) -> None:
+        """POST /api/store with dot-notation key creates a nested dict."""
+        stack, app, _, _ = self._open_store_app(tmp_path)
+        with stack:
+            app._server = MagicMock()
+            with TestClient(app) as client:
+                resp = client.post(
+                    "/api/store",
+                    json={"key": "trader.isInitialFunded", "value": True},
+                )
+        assert resp.status_code == HTTPStatus.OK
+        persisted = json.loads(
+            (tmp_path / "pearl_store.json").read_text(encoding="utf-8")
+        )
+        assert persisted == {
+            "version": 1,
+            "data": {"trader": {"isInitialFunded": True}},
+        }
+
+    def test_post_store_key_named_path_is_stored_without_localresource_collision(
+        self, tmp_path: Path
+    ) -> None:
+        """POST /api/store with key 'path' stores a normal top-level entry."""
+        stack, app, _, _ = self._open_store_app(tmp_path)
+        with stack:
+            app._server = MagicMock()
+            with TestClient(app) as client:
+                post_resp = client.post(
+                    "/api/store",
+                    json={"key": "path", "value": {"inner": 123}},
+                )
+                get_resp = client.get("/api/store")
+
+        assert post_resp.status_code == HTTPStatus.OK
+        assert post_resp.json() == {"success": True}
+        assert get_resp.status_code == HTTPStatus.OK
+        assert get_resp.json() == {"data": {"path": {"inner": 123}}}
+
+        persisted = json.loads(
+            (tmp_path / "pearl_store.json").read_text(encoding="utf-8")
+        )
+        assert persisted == {
+            "version": 1,
+            "data": {"path": {"inner": 123}},
+        }
+
+    def test_post_store_overwrites_non_dict_intermediate(self, tmp_path: Path) -> None:
+        """POST /api/store replaces a non-dict intermediate value with a dict."""
+        (tmp_path / "pearl_store.json").write_text(
+            json.dumps({"trader": "not-a-dict"}), encoding="utf-8"
+        )
+        stack, app, _, _ = self._open_store_app(tmp_path)
+        with stack:
+            app._server = MagicMock()
+            with TestClient(app) as client:
+                resp = client.post(
+                    "/api/store",
+                    json={"key": "trader.isInitialFunded", "value": True},
+                )
+        assert resp.status_code == HTTPStatus.OK
+        persisted = json.loads(
+            (tmp_path / "pearl_store.json").read_text(encoding="utf-8")
+        )
+        assert persisted["data"]["trader"]["isInitialFunded"] is True
+
+    def test_delete_store_simple_key_removes_entry(self, tmp_path: Path) -> None:
+        """DELETE /api/store/{key} removes a top-level key."""
+        (tmp_path / "pearl_store.json").write_text(
+            json.dumps({"myKey": "value", "other": 1}), encoding="utf-8"
+        )
+        stack, app, _, _ = self._open_store_app(tmp_path)
+        with stack:
+            app._server = MagicMock()
+            with TestClient(app) as client:
+                resp = client.delete("/api/store/myKey")
+        assert resp.status_code == HTTPStatus.OK
+        assert resp.json() == {"success": True}
+        persisted = json.loads(
+            (tmp_path / "pearl_store.json").read_text(encoding="utf-8")
+        )
+        assert "myKey" not in persisted["data"]
+        assert persisted["data"]["other"] == 1
+
+    def test_delete_store_dot_notation_removes_nested_key(self, tmp_path: Path) -> None:
+        """DELETE /api/store/{key} with dot-notation removes a nested key."""
+        (tmp_path / "pearl_store.json").write_text(
+            json.dumps({"trader": {"isInitialFunded": True, "other": "val"}}),
+            encoding="utf-8",
+        )
+        stack, app, _, _ = self._open_store_app(tmp_path)
+        with stack:
+            app._server = MagicMock()
+            with TestClient(app) as client:
+                resp = client.delete("/api/store/trader.isInitialFunded")
+        assert resp.status_code == HTTPStatus.OK
+        persisted = json.loads(
+            (tmp_path / "pearl_store.json").read_text(encoding="utf-8")
+        )
+        assert "isInitialFunded" not in persisted["data"]["trader"]
+        assert persisted["data"]["trader"]["other"] == "val"
+
+    def test_delete_store_non_dict_intermediate_is_noop(self, tmp_path: Path) -> None:
+        """DELETE /api/store/{key} keeps payload unchanged when an intermediate is not a dict."""
+        original = {"trader": "not-a-dict"}
+        (tmp_path / "pearl_store.json").write_text(
+            json.dumps(original), encoding="utf-8"
+        )
+        stack, app, _, _ = self._open_store_app(tmp_path)
+        with stack:
+            app._server = MagicMock()
+            with TestClient(app) as client:
+                resp = client.delete("/api/store/trader.isInitialFunded")
+        assert resp.status_code == HTTPStatus.OK
+        data = json.loads((tmp_path / "pearl_store.json").read_text(encoding="utf-8"))
+        assert data == {"version": 1, "data": original}
+
+    def test_post_store_dot_notation_key_with_empty_segment_returns_400(
+        self, tmp_path: Path
+    ) -> None:
+        """POST /api/store with a key containing consecutive dots returns 400."""
+        stack, app, _, _ = self._open_store_app(tmp_path)
+        with stack:
+            app._server = MagicMock()
+            with TestClient(app) as client:
+                resp = client.post(
+                    "/api/store",
+                    json={"key": "a..b", "value": True},
+                )
+        assert resp.status_code == HTTPStatus.BAD_REQUEST
+        assert "segments" in resp.json()["error"].lower()
