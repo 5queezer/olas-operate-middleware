@@ -22,11 +22,9 @@
 import binascii
 import itertools
 import secrets
-import time
 import typing as t
 from enum import Enum
 
-import requests
 from aea.crypto.base import Crypto, LedgerApi
 from aea.helpers.logging import setup_logger
 from autonomy.chain.base import registry_contracts
@@ -543,9 +541,21 @@ def gas_fees_spent_in_tx(
     raise ChainInteractionError(f"Cannot fetch transaction receipt for {tx_hash}.")
 
 
-def estimate_transfer_tx_fee(chain: Chain, sender_address: str, to: str) -> int:
-    """Estimate transfer transaction fee."""
-    ledger_api = get_default_ledger_api(chain)
+def estimate_transfer_tx_fee(
+    chain: Chain,
+    sender_address: str,
+    to: str,
+    ledger_api: t.Optional[LedgerApi] = None,
+) -> int:
+    """Estimate transfer transaction fee.
+
+    If ``ledger_api`` is provided, it is used for the gas estimation RPC
+    calls (this lets callers reuse a service-configured RPC instead of the
+    chain's default public endpoint). Otherwise, the chain's default ledger
+    API is used.
+    """
+    if ledger_api is None:
+        ledger_api = get_default_ledger_api(chain)
     tx = ledger_api.get_transfer_transaction(
         sender_address=sender_address,
         destination_address=to,
@@ -585,6 +595,7 @@ def drain_eoa(
             chain=chain,
             sender_address=crypto.address,
             to=withdrawal_address,
+            ledger_api=ledger_api,
         )
 
         amount = ledger_api.get_balance(crypto.address) - chain_fee
@@ -694,69 +705,3 @@ def get_assets_balances(
         )
 
     return output
-
-
-#: Safe Transaction Service API URLs, keyed by chain_id.
-#: Used to enumerate Safe addresses owned by a given EOA.
-SAFE_TX_SERVICE_URLS: t.Dict[int, str] = {
-    137: "https://api.safe.global/tx-service/pol",
-    100: "https://api.safe.global/tx-service/gno",
-    8453: "https://api.safe.global/tx-service/base",
-    10: "https://api.safe.global/tx-service/oeth",
-}
-
-
-def fetch_safes_for_owner(chain_id: int, owner_address: str) -> t.List[str]:
-    """Fetch Safe addresses owned by *owner_address* via the Safe Transaction Service API.
-
-    Retries up to 3 times total with exponential backoff (1 s, 2 s) on transient
-    failures: connection errors, timeouts, HTTP 5xx, and HTTP 429.
-    Non-retryable HTTP errors (e.g. 4xx other than 429) abort immediately.
-
-    Returns an empty list if the chain is not supported or all attempts fail.
-    """
-    base_url = SAFE_TX_SERVICE_URLS.get(chain_id)
-    if not base_url:
-        return []
-
-    url = f"{base_url}/api/v1/owners/{owner_address}/safes/"
-    max_attempts = 3
-
-    for attempt in range(max_attempts):
-        try:
-            resp = requests.get(
-                url, headers={"User-Agent": "olas-operate/1.0"}, timeout=30
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return data.get("safes", [])
-        except requests.HTTPError as exc:
-            status = exc.response.status_code if exc.response is not None else None
-            if status is not None and status not in (429,) and status < 500:
-                # Non-retryable client error (e.g. 404)
-                logger.warning(
-                    f"Safe TX service non-retryable error for chain={chain_id}: {exc}"
-                )
-                return []
-            # 429 or 5xx: fall through to retry logic below
-            logger.warning(
-                f"Safe TX service HTTP {status} for chain={chain_id} "
-                f"(attempt {attempt + 1}/{max_attempts}): {exc}"
-            )
-        except (requests.Timeout, requests.ConnectionError) as exc:
-            logger.warning(
-                f"Safe TX service transient error for chain={chain_id} "
-                f"(attempt {attempt + 1}/{max_attempts}): {exc}"
-            )
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.warning(f"Safe TX service query failed for chain={chain_id}: {exc}")
-            return []
-
-        if attempt < max_attempts - 1:
-            delay = 2**attempt  # 1 s, then 2 s
-            time.sleep(delay)
-
-    logger.warning(
-        f"Safe TX service query failed for chain={chain_id} after {max_attempts} attempts"
-    )
-    return []

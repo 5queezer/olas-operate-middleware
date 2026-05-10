@@ -103,6 +103,10 @@ STAKING: t.Dict[Chain, t.Dict[str, str]] = {
         "pearl_beta_mech_marketplace_2": "0x8d7bE092d154b01d404f1aCCFA22Cef98C613B5D",
         "pearl_beta_mech_marketplace_3": "0x9D00A0551F20979080d3762005C9B74D7Aa77b85",
         "pearl_beta_mech_marketplace_4": "0xE2f80659dB1069f3B6a08af1A62064190c119543",
+        "pearl_beta_mech_marketplace_5": "0x536D04dBD9A2310152a0D2d8D18daDFCA8Bb26b0",
+        "pearl_beta_mech_marketplace_6": "0xac3Ed39D18d9C951BD2e7F0024114849C0a25295",
+        "pearl_beta_mech_marketplace_7": "0xB2303F9913f11131A74F4b05099Ced2043cc72C4",
+        "pearl_beta_mech_marketplace_8": "0x12bdd401Ac300482f4017C64c6c930ee40424c08",
         "quickstart_beta_mech_marketplace_expert_1": "0xdB9E2713c3dA3C403F2eA6E570eB978b00304e9E",
         "quickstart_beta_mech_marketplace_expert_2": "0x1E90522b45c771DCF5f79645B9e96551d2ECaF62",
         "quickstart_beta_mech_marketplace_expert_3": "0x75EECA6207be98cAc3fDE8a20eCd7B01e50b3472",
@@ -211,6 +215,10 @@ USDC_E: t.Dict[Chain, str] = {
     Chain.POLYGON: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
 }
 
+PUSD: t.Dict[Chain, str] = {
+    Chain.POLYGON: "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB",
+}
+
 WRAPPED_NATIVE_ASSET = {
     Chain.ARBITRUM_ONE: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
     Chain.BASE: "0x4200000000000000000000000000000000000006",
@@ -227,6 +235,7 @@ ERC20_TOKENS = {
     "USDC": USDC,
     "USDC.e": USDC_E,
     "WRAPPED_NATIVE": WRAPPED_NATIVE_ASSET,
+    "pUSD": PUSD,
 }
 
 #: ERC-20 token addresses indexed by chain ID, derived from ERC20_TOKENS.
