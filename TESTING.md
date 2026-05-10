@@ -9,10 +9,10 @@ This document describes the test coverage, gaps, and testing strategy for the Ol
 ### Unit Tests (1,639 tests, ~2 minutes)
 Fast tests with no external dependencies. Run with:
 ```bash
-tox -e unit-tests
+poetry run tox -e unit-tests
 ```
 
-### Integration Tests (262 tests, ~7-10 minutes)
+### Integration Tests (262 tests, takes too long, run very selectively)
 Tests requiring testnet RPC endpoints. Run with:
 ```bash
 # Requires environment variables
@@ -22,7 +22,16 @@ export GNOSIS_TESTNET_RPC="https://..."
 export OPTIMISM_TESTNET_RPC="https://..."
 export POLYGON_TESTNET_RPC="https://..."
 
-tox -e integration-tests
+poetry run tox -e integration-tests -- path/to/test -v
+```
+
+By default, runs with `pytest-xdist` in parallel (`-n auto`). CI overrides this with `-n 8`.
+
+For debugging or narrower parallelism, override locally:
+```bash
+export CI=true
+export PYTEST_XDIST_WORKERS=2
+poetry run tox -e integration-tests -- path/to/test -v
 ```
 
 ### Recorded HTTP tests (pytest-recording)
@@ -55,13 +64,13 @@ This ensures different RPC payloads (e.g., different block numbers) match the co
 When API behavior changes, re-record cassettes with:
 ```bash
 # Record all cassettes for a specific test
-pytest tests/test_bridge_providers.py::TestNativeBridgeProvider::test_find_block_before_timestamp --record-mode=once -v
+poetry run pytest tests/test_bridge_providers.py::TestNativeBridgeProvider::test_find_block_before_timestamp --record-mode=once -v
 
 # Record for the other test
-pytest tests/test_bridge_providers.py::TestProvider::test_update_execution_status_failure_then_success --record-mode=once -v
+poetry run pytest tests/test_bridge_providers.py::TestProvider::test_update_execution_status_failure_then_success --record-mode=once -v
 
 # Record all cassettes at once
-pytest tests/test_bridge_providers.py -k "vcr" --record-mode=once -v
+poetry run pytest tests/test_bridge_providers.py -k "vcr" --record-mode=once -v
 ```
 
 ## Working with VCR Tests
@@ -83,13 +92,10 @@ We use `pytest-recording` (a pytest plugin wrapping VCR.py) to implement this pa
 **Normal test execution** (using cassettes):
 ```bash
 # Run specific VCR test
-pytest tests/test_bridge_providers.py::TestNativeBridgeProvider::test_find_block_before_timestamp -v
+poetry run pytest tests/test_bridge_providers.py::TestNativeBridgeProvider::test_find_block_before_timestamp -v
 
 # Run all VCR tests
-pytest tests/test_bridge_providers.py -m vcr -v
-
-# VCR tests run as part of integration tests
-tox -e integration-tests
+poetry run pytest tests/test_bridge_providers.py -m vcr -v
 ```
 
 Tests with recorded cassettes run automatically in replay mode—no special flags needed.
@@ -111,7 +117,7 @@ Tests with recorded cassettes run automatically in replay mode—no special flag
 
 2. **Record with `--record-mode=once`**:
    ```bash
-   pytest tests/test_bridge_providers.py::TestNativeBridgeProvider::test_find_block_before_timestamp --record-mode=once -v
+   poetry run pytest tests/test_bridge_providers.py::TestNativeBridgeProvider::test_find_block_before_timestamp --record-mode=once -v
    ```
 
 3. **Verify cassettes were created**:
@@ -121,7 +127,7 @@ Tests with recorded cassettes run automatically in replay mode—no special flag
 
 4. **Test replay works**:
    ```bash
-   pytest tests/test_bridge_providers.py::TestNativeBridgeProvider::test_find_block_before_timestamp -v
+   poetry run pytest tests/test_bridge_providers.py::TestNativeBridgeProvider::test_find_block_before_timestamp -v
    ```
 
 **Record modes:**
@@ -195,7 +201,7 @@ CannotOverwriteExistingCassetteException
 ```
 **Solution**: Record the cassette:
 ```bash
-pytest tests/test_file.py::test_name --record-mode=once
+poetry run pytest tests/test_file.py::test_name --record-mode=once
 ```
 
 **Problem: Test passes on first run but fails on replay**
@@ -338,13 +344,13 @@ Tests are marked for easy filtering:
 Run specific categories:
 ```bash
 # Only unit tests
-pytest -m "unit"
+poetry run pytest -m "unit"
 
 # Only integration tests
-pytest -m "integration"
+poetry run pytest -m "integration"
 
 # Exclude integration tests
-pytest -m "not integration"
+poetry run pytest -m "not integration"
 ```
 
 ## CI/CD Testing Strategy
@@ -353,7 +359,7 @@ pytest -m "not integration"
 - **Linter checks**: Run first, must pass
 - **Unit tests**: Run in parallel on 3 OS × 5 Python versions (3.10, 3.11, 3.12, 3.13, 3.14), must pass
 - **Coverage**: Run on Ubuntu Python 3.14 with `--cov-fail-under=100`, must pass
-- **Integration tests**: Run in parallel on 3 OS × Python 3.14, can fail (`continue-on-error: true`)
+- **Integration tests**: Run in parallel on 3 OS × Python 3.14, must pass
 
 ### Platform-Specific Test Behavior
 
